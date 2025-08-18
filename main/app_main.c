@@ -34,7 +34,7 @@
 #define MQTT_CLIENT_ID              "2022371044"
 #define TOPIC_SENSOR_DATA           "esp32/sensor_data"
 #define TOPIC_OTA_ALERT             "esp32/ota_alert"
-#define MANIFEST_URL                "https://firmware-host.onrender.com/firmware/manifest.json"
+#define MANIFEST_URL                "https://proyecto-iot-paq8.onrender.com/firmware/manifest.json"
 #define OTA_MANIFEST_MAX_SIZE       1024
 
 /* ===================== PINOUT (2 sensores, 2 actuadores) ===================== */
