@@ -4,6 +4,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <netdb.h>          // Para getaddrinfo, freeaddrinfo, struct addrinfo
+#include <esp_netif.h>      // Para ESP_IF_WIFI_STA y funciones de red
+#include <esp_wifi.h>       // Para definiciones WiFi
+#include <esp_http_client.h> // Para el cliente HTTP
+#include <esp_https_ota.h>   // Para OTA
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -261,35 +266,24 @@ static esp_err_t _ota_http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-static esp_err_t start_ota_from_url(const char *url)
-{
-    struct addrinfo hints;
-struct addrinfo *res = NULL;
-memset(&hints, 0, sizeof(hints));
-hints.ai_family = AF_INET;
-hints.ai_socktype = SOCK_STREAM;
-
-int ret = getaddrinfo("proyecto-iot-paq8.onrender.com", "443", &hints, &res);
-if (ret != 0) {
-    ESP_LOGE(TAG, "DNS fallo: %d (%s)", ret, gai_strerror(ret));
-} else {
-    ESP_LOGI(TAG, "DNS correcto, host resuelto");
-    freeaddrinfo(res);
-}
-
-    ESP_LOGI(TAG, "Iniciando OTA: %s", url);
-    esp_http_client_config_t http_config = {
+static esp_err_t start_ota_from_url(const char *url) {
+    esp_http_client_config_t config = {
         .url = url,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .event_handler = _ota_http_event_handler,
+        .cert_pem = NULL,
+        .crt_bundle_attach = esp_crt_bundle_attach, // Añade esto para HTTPS
     };
-    esp_https_ota_config_t ota_config = { .http_config = &http_config };
+    
+    esp_https_ota_config_t ota_config = {
+        .http_config = &config,
+    };
+
     esp_err_t ret = esp_https_ota(&ota_config);
+    
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "OTA exitosa. Reiniciando...");
+        ESP_LOGI(TAG, "OTA exitosa, reiniciando...");
         esp_restart();
     } else {
-        ESP_LOGE(TAG, "OTA falló: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Error en OTA: %s", esp_err_to_name(ret));
     }
     return ret;
 }
@@ -352,21 +346,36 @@ static esp_err_t init_sensors(void)
 static bool get_manifest_and_maybe_update(void)
 {
     bool updated = false;
-    esp_http_client_config_t cfg = { .url = MANIFEST_URL, .crt_bundle_attach = esp_crt_bundle_attach };
+    esp_http_client_config_t cfg = { 
+        .url = MANIFEST_URL, 
+        .crt_bundle_attach = esp_crt_bundle_attach 
+    };
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if (!client) return false;
 
     esp_err_t err = esp_http_client_open(client, 0);
-    if (err != ESP_OK) { esp_http_client_cleanup(client); return false; }
+    if (err != ESP_OK) { 
+        esp_http_client_cleanup(client); 
+        return false; 
+    }
 
     int content_len = esp_http_client_fetch_headers(client);
-    if (content_len <= 0 || content_len > OTA_MANIFEST_MAX_SIZE) content_len = OTA_MANIFEST_MAX_SIZE;
+    if (content_len <= 0 || content_len > OTA_MANIFEST_MAX_SIZE) {
+        content_len = OTA_MANIFEST_MAX_SIZE;
+    }
 
-    char *buf = malloc(OTA_MANIFEST_MAX_SIZE);
-    if (!buf) { esp_http_client_close(client); esp_http_client_cleanup(client); return false; }
+    char *buf = malloc(content_len + 1);
+    if (!buf) { 
+        esp_http_client_close(client); 
+        esp_http_client_cleanup(client); 
+        return false; 
+    }
 
-    int total = 0; int r;
-    while ((r = esp_http_client_read(client, buf + total, OTA_MANIFEST_MAX_SIZE - 1 - total)) > 0) total += r;
+    int total = 0; 
+    int r;
+    while ((r = esp_http_client_read(client, buf + total, content_len - total)) > 0) {
+        total += r;
+    }
     buf[total] = '\0';
 
     int status = esp_http_client_get_status_code(client);
@@ -378,12 +387,14 @@ static bool get_manifest_and_maybe_update(void)
         if (root) {
             cJSON *version = cJSON_GetObjectItem(root, "version");
             cJSON *bin_url = cJSON_GetObjectItem(root, "bin_url");
+            
             if (cJSON_IsString(version) && cJSON_IsString(bin_url)) {
                 if (strcmp(version->valuestring, APP_VERSION) != 0) {
-                    ESP_LOGI(TAG, "Nueva versión %s (actual %s).", version->valuestring, APP_VERSION);
-                    if (start_ota_from_url(bin_url->valuestring) == ESP_OK) updated = true;
-                } else {
-                    ESP_LOGI(TAG, "Firmware actual (%s).", APP_VERSION);
+                    ESP_LOGI(TAG, "Nueva versión disponible: %s", version->valuestring);
+                    esp_err_t ota_result = start_ota_from_url(bin_url->valuestring);
+                    if (ota_result == ESP_OK) {
+                        updated = true;
+                    }
                 }
             }
             cJSON_Delete(root);
@@ -417,37 +428,19 @@ static void apply_outputs(bool optimal)
 }
 
 /* ===================== ESTADOS ===================== */
-static void run_state_initializing(void)
-{
-    ESP_LOGI(TAG, "Estado: INITIALIZING");
-
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(example_connect());
-    esp_err_t err = esp_netif_get_ip_info(ESP_IF_WIFI_STA, &ip_info);
-if (err == ESP_OK) {
-    ESP_LOGI(TAG, "IP asignada: " IPSTR, IP2STR(&ip_info.ip));
-} else {
-    ESP_LOGE(TAG, "No se pudo obtener IP");
-}
-    ESP_ERROR_CHECK(init_sensors());
-
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = BROKER_URI,
-        .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
-        .credentials.username = MQTT_USER,
-        .credentials.authentication.password = MQTT_PASS,
-        .credentials.client_id = MQTT_CLIENT_ID,
-        .session.keepalive = 60,
-    };
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
-
-    int timeout = 0;
-    while (!mqtt_client_global && timeout < 20) { vTaskDelay(pdMS_TO_TICKS(500)); timeout++; }
-
-    current_state = mqtt_client_global ? STATE_RUNNING : STATE_INITIALIZING;
+void run_state_initializing() {
+    esp_netif_ip_info_t ip_info; // Declara ip_info correctamente
+    
+    // Obtiene la información IP de la interfaz WiFi STA
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif) {
+        esp_err_t err = esp_netif_get_ip_info(netif, &ip_info);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "IP obtenida: " IPSTR, IP2STR(&ip_info.ip));
+        } else {
+            ESP_LOGE(TAG, "Error al obtener IP: %s", esp_err_to_name(err));
+        }
+    }
 }
 
 static void run_state_running(void)
@@ -516,34 +509,53 @@ static void run_state_ota_pending(void)
 /* ===================== MAIN ===================== */
 void app_main(void)
 {
-
-    esp_http_client_config_t cfg = {
-    .url = MANIFEST_URL,
-    .crt_bundle_attach = esp_crt_bundle_attach,
-};
-esp_http_client_handle_t client = esp_http_client_init(&cfg);
-if (esp_http_client_open(client, 0) == ESP_OK) {
-    int len = esp_http_client_fetch_headers(client);
-    ESP_LOGI(TAG, "HTTP OK, tamaño headers: %d", len);
-} else {
-    ESP_LOGE(TAG, "HTTP GET falló");
-}
-esp_http_client_cleanup(client);
-
-    // NVS init robusto
+    // Inicializa NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
 
+    // Inicializa red
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(example_connect());
+
+    // Inicializa MQTT
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .broker.address.uri = BROKER_URI,
+        .credentials.username = MQTT_USER,
+        .credentials.authentication.password = MQTT_PASS,
+        .session.last_will.topic = TOPIC_SENSOR_DATA,
+        .session.last_will.msg = "disconnected",
+        .session.last_will.msg_len = 11,
+        .session.last_will.qos = 1,
+        .session.last_will.retain = 0
+    };
+    esp_mqtt_client_handle_t mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+    ESP_ERROR_CHECK(esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_mqtt_client_start(mqtt_client));
+
+    // Inicializa sensores
+    init_sensors();
+
+    // Bucle principal
     while (1) {
         switch (current_state) {
-            case STATE_INITIALIZING: run_state_initializing(); break;
-            case STATE_RUNNING:      run_state_running(); break;
-            case STATE_OTA_PENDING:  run_state_ota_pending(); break;
-            default: ESP_LOGE(TAG, "Estado inválido"); vTaskDelay(pdMS_TO_TICKS(1000)); break;
+            case STATE_INITIALIZING: 
+                run_state_initializing(); 
+                current_state = STATE_RUNNING;
+                break;
+            case STATE_RUNNING:      
+                run_state_running(); 
+                break;
+            case STATE_OTA_PENDING:  
+                run_state_ota_pending(); 
+                break;
+            default: 
+                ESP_LOGE(TAG, "Estado inválido"); 
+                vTaskDelay(pdMS_TO_TICKS(1000)); 
+                break;
         }
     }
 }
- 
