@@ -21,7 +21,7 @@
 #include "esp_adc/adc_cali.h"
 #include "protocol_examples_common.h"
 
-#define APP_VERSION       "v2.3"
+#define APP_VERSION       "v2.4"
 #define BROKER_URI        "mqtts://l46d1e5e.ala.us-east-1.emqxsl.com:8883"
 #define MQTT_USER         "big-data-001"
 #define MQTT_PASS         "1Q2W3E4R5T6Y"
@@ -29,7 +29,7 @@
 #define TOPIC_SENSOR      "esp32/sensor_data"
 #define TOPIC_OTA         "esp32/ota_alert"
 #define MANIFEST_URL      "https://proyecto-iot-paq8.onrender.com/firmware/manifest.json"
-#define SAMPLE_PERIOD_MS  30000 
+#define SAMPLE_PERIOD_MS  35000 
 
 #define DHTPIN            GPIO_NUM_4
 #define SOIL_PIN          ADC_CHANNEL_6
