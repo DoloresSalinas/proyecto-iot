@@ -125,13 +125,77 @@ static float read_soil(void) {
 static esp_err_t start_ota(const char *binary_url) {
     esp_http_client_config_t http_cfg = {
         .url = binary_url,
-        .cert_pem = (const char *)mqtt_eclipseprojects_io_pem_start, // O el que sea correcto
+        .cert_pem = (const char *)mqtt_eclipseprojects_io_pem_start,
     };
     esp_https_ota_config_t ota_cfg = {
         .http_config = &http_cfg
     };
     return esp_https_ota(&ota_cfg);
 }
+
+static void ota_process(void) {
+    ESP_LOGI(TAG, "Iniciando proceso OTA...");
+
+    esp_http_client_config_t http_cfg = {
+        .url = MANIFEST_URL,
+        .crt_bundle_attach = esp_crt_bundle_attach
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&http_cfg); 
+
+    if (!client) {
+        ESP_LOGE(TAG, "Failed to init HTTP client");
+        current_state = STATE_RUN;
+        return;
+    }
+
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        current_state = STATE_RUN;
+        return;
+    }
+    
+    int content_length = esp_http_client_fetch_headers(client);
+    bool ota_triggered = false;
+
+    if (content_length > 0 && esp_http_client_get_status_code(client) == 200) {
+        char *buf = (char *)malloc(content_length + 1);
+        if (buf) {
+            int read_len = esp_http_client_read(client, buf, content_length);
+            if (read_len > 0) {
+                buf[read_len] = '\0';
+                cJSON *root = cJSON_Parse(buf);
+                if (root) {
+                    cJSON *version = cJSON_GetObjectItem(root, "version");
+                    cJSON *bin_url = cJSON_GetObjectItem(root, "bin_url");
+                    
+                    if (cJSON_IsString(version) && cJSON_IsString(bin_url) && strcmp(version->valuestring, APP_VERSION) != 0) {
+                        ESP_LOGI(TAG, "Nueva versión encontrada: %s. Iniciando OTA...", version->valuestring);
+                        esp_err_t ota_err = start_ota(bin_url->valuestring);
+                        ota_triggered = true;
+                        
+                        if (ota_err == ESP_OK) {
+                            ESP_LOGI(TAG, "OTA exitosa. Reiniciando...");
+                            esp_restart();
+                        } else {
+                            ESP_LOGE(TAG, "OTA fallida. Error: %s", esp_err_to_name(ota_err));
+                        }
+                    }
+                    cJSON_Delete(root);
+                }
+            }
+            free(buf);
+        }
+    }
+    esp_http_client_cleanup(client);
+    
+    if (!ota_triggered) {
+        current_state = STATE_RUN;
+        ESP_LOGI(TAG, "Volviendo al estado: RUN"); 
+    }
+}
+
 
 static void get_manifest(void) {
     esp_http_client_config_t http_cfg = {
@@ -253,14 +317,14 @@ void app_main(void) {
     while (1) {
         switch (current_state) {
             case STATE_INIT:
+                ESP_LOGI(TAG, "Cambiando a estado: RUN");
                 current_state = STATE_RUN;
                 break;
             case STATE_RUN:
                 run_main_loop();
                 break;
             case STATE_OTA:
-                get_manifest();
-                current_state = STATE_RUN;
+                ota_process();
                 break;
         }
     }
