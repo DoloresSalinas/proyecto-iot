@@ -1,4 +1,4 @@
 {
-  "version": "v2.2",
-  "bin_url": "https://proyecto-iot-paq8.onrender.com/firmware/esp32_ota_firmware_v2.2.bin"
+  "version": "v2.3",
+  "bin_url": "https://proyecto-iot-paq8.onrender.com/firmware/esp32_ota_firmware_v2.3.bin"
 }

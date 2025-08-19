@@ -21,7 +21,7 @@
 #include "esp_adc/adc_cali.h"
 #include "protocol_examples_common.h"
 
-#define APP_VERSION       "v2.2"
+#define APP_VERSION       "v2.3"
 #define BROKER_URI        "mqtts://l46d1e5e.ala.us-east-1.emqxsl.com:8883"
 #define MQTT_USER         "big-data-001"
 #define MQTT_PASS         "1Q2W3E4R5T6Y"
@@ -30,8 +30,6 @@
 #define TOPIC_OTA         "esp32/ota_alert"
 #define MANIFEST_URL      "https://proyecto-iot-paq8.onrender.com/firmware/manifest.json"
 #define SAMPLE_PERIOD_MS  30000 
-
-const char *TOPIC = "esp32/data"; 
 
 #define DHTPIN            GPIO_NUM_4
 #define SOIL_PIN          ADC_CHANNEL_6
@@ -199,46 +197,6 @@ static void ota_process(void) {
 }
 
 
-static void get_manifest(void) {
-    esp_http_client_config_t http_cfg = {
-        .url = MANIFEST_URL,
-        .crt_bundle_attach = esp_crt_bundle_attach
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&http_cfg);
-    if (!client) {
-        ESP_LOGE(TAG, "Failed to init HTTP client");
-        return;
-    }
-    esp_err_t err = esp_http_client_open(client, 0);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return;
-    }
-    int content_length = esp_http_client_fetch_headers(client);
-    if (content_length > 0 && esp_http_client_get_status_code(client) == 200) {
-        char *buf = (char *)malloc(content_length + 1);
-        if (buf) {
-            int read_len = esp_http_client_read(client, buf, content_length);
-            if (read_len > 0) {
-                buf[read_len] = '\0';
-                cJSON *root = cJSON_Parse(buf);
-                if (root) {
-                    cJSON *version = cJSON_GetObjectItem(root, "version");
-                    cJSON *bin_url = cJSON_GetObjectItem(root, "bin_url");
-                    if (cJSON_IsString(version) && cJSON_IsString(bin_url) && strcmp(version->valuestring, APP_VERSION) != 0) {
-                        ESP_LOGI(TAG, "New version found: %s. Starting OTA.", version->valuestring);
-                        start_ota(bin_url->valuestring);
-                    }
-                    cJSON_Delete(root);
-                }
-            }
-            free(buf);
-        }
-    }
-    esp_http_client_cleanup(client);
-}
-
 /* ===== MQTT handler ===== */
 static void mqtt_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
     esp_mqtt_event_handle_t e = data;
@@ -251,8 +209,10 @@ static void mqtt_handler(void *arg, esp_event_base_t base, int32_t id, void *dat
         ESP_LOGI(TAG, "MQTT disconnected");
     } else if (e->event_id == MQTT_EVENT_DATA) {
         if (strncmp(e->topic, TOPIC_OTA, e->topic_len) == 0) {
-            ESP_LOGI(TAG, "OTA alert received. Changing state to OTA.");
-            current_state = STATE_OTA;
+            if (current_state != STATE_OTA) {
+                ESP_LOGI(TAG, "OTA alert received. Changing state to OTA.");
+                current_state = STATE_OTA;
+            }
         }
     }
 }
@@ -293,12 +253,11 @@ static void run_main_loop(void) {
             }
             
             char *json_string = cJSON_PrintUnformatted(j);
-            esp_mqtt_client_publish(mqtt_client, TOPIC, json_string, 0, 1, 0);
+            esp_mqtt_client_publish(mqtt_client, TOPIC_SENSOR, json_string, 0, 1, 0);
             cJSON_free(json_string);
             cJSON_Delete(j);
         }
     }
-    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 /* ===== MAIN ===== */
@@ -324,6 +283,10 @@ void app_main(void) {
     gpio_set_direction(DHTPIN, GPIO_MODE_INPUT_OUTPUT_OD);
     gpio_set_level(DHTPIN, 1);
 
+    // Muestra la versión de la app una sola vez al arrancar
+    ESP_LOGI(TAG, "App version: %s", APP_VERSION);
+    ESP_LOGI(TAG, "Aplicación iniciada. Esperando comandos...");
+
     while (1) {
         switch (current_state) {
             case STATE_INIT:
@@ -331,11 +294,12 @@ void app_main(void) {
                 current_state = STATE_RUN;
                 break;
             case STATE_RUN:
-                ESP_LOGI(TAG, "App version: v2.1 - ¡Actualización OTA exitosa! 🎉");
                 run_main_loop();
+                vTaskDelay(pdMS_TO_TICKS(100));
                 break;
             case STATE_OTA:
                 ota_process();
+                vTaskDelay(pdMS_TO_TICKS(100));
                 break;
         }
     }
