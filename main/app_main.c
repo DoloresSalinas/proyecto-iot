@@ -21,7 +21,7 @@
 #include "esp_adc/adc_cali.h"
 #include "protocol_examples_common.h"
 
-#define APP_VERSION       "v2.4"
+#define APP_VERSION       "v2.5"
 #define BROKER_URI        "mqtts://l46d1e5e.ala.us-east-1.emqxsl.com:8883"
 #define MQTT_USER         "big-data-001"
 #define MQTT_PASS         "1Q2W3E4R5T6Y"
@@ -143,14 +143,14 @@ static void ota_process(void) {
     esp_http_client_handle_t client = esp_http_client_init(&http_cfg); 
 
     if (!client) {
-        ESP_LOGE(TAG, "Failed to init HTTP client");
+        ESP_LOGE(TAG, "Fallo al iniciar HTTP cliente");
         current_state = STATE_RUN;
         return;
     }
 
     esp_err_t err = esp_http_client_open(client, 0);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Falla al abrir la conección a HTTP: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
         current_state = STATE_RUN;
         return;
@@ -203,14 +203,14 @@ static void mqtt_handler(void *arg, esp_event_base_t base, int32_t id, void *dat
     if (e->event_id == MQTT_EVENT_CONNECTED) {
         mqtt_client = e->client;
         esp_mqtt_client_subscribe(mqtt_client, TOPIC_OTA, 1);
-        ESP_LOGI(TAG, "MQTT connected, subscribed to %s", TOPIC_OTA);
+        ESP_LOGI(TAG, "MQTT conectado, subscribed a %s", TOPIC_OTA);
     } else if (e->event_id == MQTT_EVENT_DISCONNECTED) {
         mqtt_client = NULL;
-        ESP_LOGI(TAG, "MQTT disconnected");
+        ESP_LOGI(TAG, "MQTT desconectado");
     } else if (e->event_id == MQTT_EVENT_DATA) {
         if (strncmp(e->topic, TOPIC_OTA, e->topic_len) == 0) {
             if (current_state != STATE_OTA) {
-                ESP_LOGI(TAG, "OTA alert received. Changing state to OTA.");
+                ESP_LOGI(TAG, "OTA alerta de recivido. Cambiendo estado a OTA.");
                 current_state = STATE_OTA;
             }
         }
