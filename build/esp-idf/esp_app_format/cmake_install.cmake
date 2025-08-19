@@ -1,4 +1,4 @@
-# Install script for directory: C:/Programas/esp/v5.4.2/esp-idf/components/esp_app_format
+# Install script for directory: C:/Users/maria/esp/v5.4.1/esp-idf/components/esp_app_format
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

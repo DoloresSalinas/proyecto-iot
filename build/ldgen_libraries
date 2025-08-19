@@ -52,7 +52,6 @@ C:/Programas/workspace/ssl/build/esp-idf/esp_netif/libesp_netif.a
 C:/Programas/workspace/ssl/build/esp-idf/wpa_supplicant/libwpa_supplicant.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_coex/libesp_coex.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_wifi/libesp_wifi.a
-C:/Programas/workspace/ssl/build/esp-idf/esp_gdbstub/libesp_gdbstub.a
 C:/Programas/workspace/ssl/build/esp-idf/unity/libunity.a
 C:/Programas/workspace/ssl/build/esp-idf/cmock/libcmock.a
 C:/Programas/workspace/ssl/build/esp-idf/console/libconsole.a
@@ -61,6 +60,7 @@ C:/Programas/workspace/ssl/build/esp-idf/esp-tls/libesp-tls.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_adc/libesp_adc.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_driver_cam/libesp_driver_cam.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_eth/libesp_eth.a
+C:/Programas/workspace/ssl/build/esp-idf/esp_gdbstub/libesp_gdbstub.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_hid/libesp_hid.a
 C:/Programas/workspace/ssl/build/esp-idf/tcp_transport/libtcp_transport.a
 C:/Programas/workspace/ssl/build/esp-idf/esp_http_client/libesp_http_client.a

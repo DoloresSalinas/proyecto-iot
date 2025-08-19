@@ -1,4 +1,4 @@
-# Install script for directory: C:/Programas/esp/v5.4.2/esp-idf/components/mbedtls/mbedtls/3rdparty
+# Install script for directory: C:/Users/maria/esp/v5.4.1/esp-idf/components/mbedtls/mbedtls/3rdparty
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

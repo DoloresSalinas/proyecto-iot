@@ -4386,7 +4386,3 @@ _binary_x509_crt_bundle_end: /* for objcopy compatibility */
 .global x509_crt_bundle_length
 x509_crt_bundle_length:
 .long 69876
-
-#if defined (__linux__)
-.section .note.GNU-stack,"",@progbits
-#endif
