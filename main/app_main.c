@@ -21,7 +21,7 @@
 #include "esp_adc/adc_cali.h"
 #include "protocol_examples_common.h"
 
-#define APP_VERSION       "v2.0"
+#define APP_VERSION       "v2.2"
 #define BROKER_URI        "mqtts://l46d1e5e.ala.us-east-1.emqxsl.com:8883"
 #define MQTT_USER         "big-data-001"
 #define MQTT_PASS         "1Q2W3E4R5T6Y"
@@ -29,7 +29,9 @@
 #define TOPIC_SENSOR      "esp32/sensor_data"
 #define TOPIC_OTA         "esp32/ota_alert"
 #define MANIFEST_URL      "https://proyecto-iot-paq8.onrender.com/firmware/manifest.json"
-#define SAMPLE_PERIOD_MS  10000
+#define SAMPLE_PERIOD_MS  30000 
+
+const char *TOPIC = "esp32/data"; 
 
 #define DHTPIN            GPIO_NUM_4
 #define SOIL_PIN          ADC_CHANNEL_6
@@ -263,29 +265,37 @@ static void run_main_loop(void) {
         last = now;
         dht_reading_t dht;
         bool ok = dht11_read(&dht);
-        float soil = read_soil();
-        bool is_optimal = ok && !isnan(soil) && dht.t >= 18 && dht.t <= 29 && dht.rh >= 60 && dht.rh <= 80 && soil >= 40 && soil <= 70;
-        apply_outputs(is_optimal);
+        float soil = read_soil(); 
+
+        ESP_LOGI(TAG, "Lectura del sensor de humedad del suelo: %.2f%%", soil);
+
+        if (ok) {
+            ESP_LOGI(TAG, "Lectura del sensor DHT11: Temp = %.1f C, Humedad = %.1f%%", dht.t, dht.rh);
+        } else {
+            ESP_LOGE(TAG, "Error al leer el sensor DHT11");
+        } 
 
         if (mqtt_client) {
             cJSON *j = cJSON_CreateObject();
             cJSON_AddStringToObject(j, "matricula", MQTT_CLIENT_ID);
+            
             if (ok) {
                 cJSON_AddNumberToObject(j, "t", dht.t);
                 cJSON_AddNumberToObject(j, "rh", dht.rh);
             } else {
                 cJSON_AddStringToObject(j, "dht_status", "fail");
             }
+
             if (!isnan(soil)) {
                 cJSON_AddNumberToObject(j, "soil", soil);
             } else {
                 cJSON_AddStringToObject(j, "soil_status", "fail");
             }
-            cJSON_AddStringToObject(j, "status", is_optimal ? "optimal" : "alert");
-            char *s = cJSON_PrintUnformatted(j);
-            esp_mqtt_client_publish(mqtt_client, TOPIC_SENSOR, s, 0, 1, 0);
+            
+            char *json_string = cJSON_PrintUnformatted(j);
+            esp_mqtt_client_publish(mqtt_client, TOPIC, json_string, 0, 1, 0);
+            cJSON_free(json_string);
             cJSON_Delete(j);
-            free(s);
         }
     }
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -321,6 +331,7 @@ void app_main(void) {
                 current_state = STATE_RUN;
                 break;
             case STATE_RUN:
+                ESP_LOGI(TAG, "App version: v2.1 - ¡Actualización OTA exitosa! 🎉");
                 run_main_loop();
                 break;
             case STATE_OTA:
